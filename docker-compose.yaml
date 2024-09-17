@@ -1,0 +1,71 @@
+version: "3"
+
+services:
+
+  small_backend:
+    restart: always
+    build:
+      context: ./small_backend
+    depends_on:
+      - db
+    ports:
+      - "8000:8000"
+    image: small_backend
+    environment:
+      - TZ=Asia/Qyzylorda
+    volumes:
+      - ./persistentdata/static:/var/www/static # <--here
+      - ./persistentdata/media:/var/www/media # <--here
+
+
+  db:
+    restart: always
+    image: postgres:15-alpine
+    ports:
+      - 5432:5432
+    environment:
+      - TZ=Asia/Qyzylorda
+    volumes:
+      - ./persistentdata/db:/var/lib/postgresql/data
+    env_file:
+      - ./postgresql-db/.pg-env # why - see the next step
+
+
+  worker:
+    restart: always
+    depends_on:
+      - db
+    build:
+      context: ./small_backend
+    environment:
+      - TZ=Asia/Qyzylorda
+    volumes:
+      - ./celery:/app/src/celery
+      - ./db:/app/src/db
+    command: ['celery', '--workdir=./src', '-A', 'small', 'worker' ]
+
+
+  celery-beats:
+      restart: always
+      depends_on:
+        - db
+      environment:
+        - TZ=Asia/Qyzylorda
+      build:
+        context: ./small_backend
+      volumes:
+        - ./db:/app/src/db
+      command: [ 'celery', '--workdir=./src', '-A', 'small', 'beat', '-l', 'INFO', '--scheduler', 'django_celery_beat.schedulers:DatabaseScheduler' ]
+
+
+  redis:
+    image: redis:alpine
+    restart: always
+    environment:
+      - TZ=Asia/Qyzylorda
+    volumes:
+      - ./persistentdata/redis-data:/data
+
+
+
+
